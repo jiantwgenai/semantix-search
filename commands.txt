@@ -1,0 +1,8 @@
+pip install fastapi
+pip install uvicorn
+pip install torch
+pip install transformers
+pip install sentence-transformers
+
+cd C:\Users\Jian\AI
+python embedding_service.py

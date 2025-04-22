@@ -1,0 +1,152 @@
+# Document Search Application Architecture
+
+## Overview
+This application is a semantic document search system that allows users to upload, store, and search through documents using natural language queries. The system uses vector embeddings and semantic search to find relevant documents based on their content.
+
+## Backend Architecture
+
+### 1. Authentication System
+- Uses JWT (JSON Web Tokens) for user authentication
+- Endpoints:
+  - `/api/auth/register`: User registration
+  - `/api/auth/login`: User login
+  - `/api/auth/verify`: Token verification
+- Security features:
+  - Password hashing using bcrypt
+  - Token expiration
+  - Protected routes
+
+### 2. Document Management
+- File Storage:
+  - Uses AWS S3 for document storage
+  - Files are stored with user-specific paths
+  - Generates pre-signed URLs for secure access
+- Database Schema:
+  - `users`: User information
+  - `documents`: Document metadata
+  - `document_chunks`: Document content chunks with embeddings
+
+### 3. Search System
+- Vector Embeddings:
+  - Uses Llama model for generating embeddings
+  - Normalizes embeddings for consistent similarity calculations
+  - Stores embeddings in PostgreSQL using pgvector extension
+- Search Process:
+  1. User submits search query
+  2. Query is converted to embedding
+  3. Similarity search performed using cosine distance
+  4. Results ranked by relevance
+  5. Returns top matches with previews
+
+### 4. API Endpoints
+- Document Management:
+  - `POST /api/documents/upload`: Upload new documents
+  - `GET /api/documents`: List user's documents
+  - `GET /api/documents/:id`: Get specific document
+- Search:
+  - `POST /api/documents/search`: Semantic search
+- Authentication:
+  - `POST /api/auth/register`: Register new user
+  - `POST /api/auth/login`: User login
+  - `GET /api/auth/verify`: Verify token
+
+## Frontend Architecture
+
+### 1. User Interface
+- React-based single-page application
+- Components:
+  - `Login`: User authentication
+  - `Register`: New user registration
+  - `DocumentList`: Display user's documents
+  - `SearchBar`: Search input
+  - `SearchResults`: Display search results
+  - `DocumentPreview`: Show document previews
+
+### 2. State Management
+- Uses React Context for global state
+- Manages:
+  - User authentication state
+  - Document list
+  - Search results
+  - Loading states
+
+### 3. API Integration
+- Axios for HTTP requests
+- Handles:
+  - Authentication
+  - Document upload/download
+  - Search requests
+- Error handling and loading states
+
+### 4. Search Interface
+- Real-time search results
+- Document previews
+- Relevance scores
+- File type indicators
+- Download links
+
+## Data Flow
+
+### 1. Document Upload Process
+1. User selects file
+2. Frontend sends file to backend
+3. Backend:
+   - Uploads file to S3
+   - Generates embeddings
+   - Stores metadata in database
+4. Frontend updates document list
+
+### 2. Search Process
+1. User enters search query
+2. Frontend sends query to backend
+3. Backend:
+   - Generates query embedding
+   - Performs vector similarity search
+   - Returns ranked results
+4. Frontend displays results with previews
+
+## Technical Stack
+
+### Backend
+- Node.js with Express
+- TypeScript
+- PostgreSQL with pgvector
+- AWS S3
+- JWT for authentication
+- Llama model for embeddings
+
+### Frontend
+- React
+- TypeScript
+- Axios
+- Material-UI
+- React Context
+
+## Security Features
+- JWT-based authentication
+- Password hashing
+- Pre-signed S3 URLs
+- Protected API routes
+- Input validation
+- Error handling
+
+## Performance Optimizations
+- Chunked document processing
+- Vector similarity indexing
+- Cached embeddings
+- Efficient file storage
+- Paginated results
+
+## Error Handling
+- Frontend error messages
+- Backend logging
+- Graceful degradation
+- User feedback
+- Error recovery
+
+## Future Improvements
+- Advanced search filters
+- Document categorization
+- Collaborative features
+- Real-time updates
+- Enhanced preview capabilities 
