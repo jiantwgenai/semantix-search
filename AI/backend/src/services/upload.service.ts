@@ -74,7 +74,7 @@ export const uploadFileToS3 = async (file: Express.Multer.File, userId: string):
     const result = await s3.upload(params).promise();
     
     // Construct the URL manually to ensure consistent format
-    const fileUrl = `https://${bucketName}.s3.${process.env.AWS_REGION}.amazonaws.com/${key}`;
+    const fileUrl = `https://${bucketName}.s3.us-east-2.amazonaws.com/${key}`;
     
     log('File uploaded successfully:', { 
       s3Url: result.Location,

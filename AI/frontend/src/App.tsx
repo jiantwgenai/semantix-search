@@ -4,6 +4,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
+import { MyDocuments } from "./pages/MyDocuments";
 
 const App = () => (
   <TooltipProvider>
@@ -11,6 +12,7 @@ const App = () => (
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Index />} />
+        <Route path="/documents" element={<MyDocuments />} />
         <Route path="*" element={<NotFound />} />
       </Routes>
     </BrowserRouter>

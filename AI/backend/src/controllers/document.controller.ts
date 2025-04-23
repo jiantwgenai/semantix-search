@@ -27,6 +27,7 @@ interface CustomRequest extends Request {
 
 interface Document {
   id: number;
+  user_id: number;
   filename: string;
   file_type: string;
   file_url: string;
@@ -42,36 +43,66 @@ export const uploadDocument = async (req: CustomRequest, res: Response) => {
       return res.status(401).json({ error: 'Unauthorized' });
     }
 
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+      return res.status(400).json({ error: 'No files uploaded' });
     }
 
-    // Generate embedding for the file content
-    const fileContent = req.file.buffer.toString('utf-8');
-    const embedding = await generateEmbedding(fileContent);
+    const uploadResults = await Promise.all(
+      req.files.map(async (file) => {
+        try {
+          // Generate embedding for the file content
+          const fileContent = file.buffer.toString('utf-8');
+          const embedding = await generateEmbedding(fileContent);
 
-    // Upload file to S3
-    const fileUrl = await uploadFileToS3(req.file, userId.toString());
+          // Upload file to S3
+          const fileUrl = await uploadFileToS3(file, userId.toString());
 
-    // Create document in database
-    const documentId = await createDocument({
-      user_id: userId,
-      filename: req.file.originalname,
-      file_url: fileUrl,
-      file_type: req.file.mimetype,
-      embedding,
-      content: fileContent
-    });
+          // Create document in database
+          const documentId = await createDocument({
+            user_id: userId,
+            filename: file.originalname,
+            file_url: fileUrl,
+            file_type: file.mimetype,
+            embedding,
+            content: fileContent
+          });
+
+          return {
+            success: true,
+            id: documentId,
+            filename: file.originalname,
+            fileUrl,
+            fileType: file.mimetype
+          };
+        } catch (error) {
+          log('Error processing file:', file.originalname, error);
+          return {
+            success: false,
+            filename: file.originalname,
+            error: 'Failed to process file'
+          };
+        }
+      })
+    );
+
+    const successfulUploads = uploadResults.filter(result => result.success);
+    const failedUploads = uploadResults.filter(result => !result.success);
+
+    if (successfulUploads.length === 0) {
+      return res.status(500).json({
+        error: 'All file uploads failed',
+        failures: failedUploads
+      });
+    }
 
     res.status(201).json({
-      id: documentId,
-      filename: req.file.originalname,
-      fileUrl,
-      fileType: req.file.mimetype
+      successful: successfulUploads,
+      failed: failedUploads,
+      message: failedUploads.length > 0 ? 'Some files failed to upload' : 'All files uploaded successfully'
     });
   } catch (error) {
-    log('Error uploading document:', error);
-    res.status(500).json({ error: 'Failed to upload document' });
+    log('Error in file upload:', error);
+    res.status(500).json({ error: 'Failed to upload files' });
   }
 };
 
@@ -103,8 +134,8 @@ export const getDocument = async (req: CustomRequest, res: Response) => {
 
     // Generate a signed URL for the file
     const s3 = new AWS.S3({
+      region: 'us-east-2',
       signatureVersion: 'v4',
-      region: process.env.AWS_REGION,
       credentials: {
         accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
         secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!
@@ -238,9 +269,7 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
           d.file_url,
           d.created_at,
           dc.content as preview,
-          dc.embedding <=> $1 as distance,
-          dc.embedding <#> $1 as cosine_distance,
-          (1.0 - (dc.embedding <#> $1)) / 2.0 as similarity
+          1 - (dc.embedding <=> $1) as similarity
         FROM documents d
         JOIN document_chunks dc ON d.id = dc.document_id
         WHERE d.user_id = $2
@@ -250,20 +279,6 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
           *,
           ROW_NUMBER() OVER (PARTITION BY id ORDER BY similarity DESC) as chunk_rank
         FROM chunk_similarity
-      ),
-      best_chunks AS (
-        SELECT 
-          id,
-          filename,
-          file_type,
-          file_url,
-          created_at,
-          preview,
-          distance,
-          cosine_distance,
-          similarity
-        FROM ranked_chunks
-        WHERE chunk_rank = 1
       )
       SELECT 
         id,
@@ -274,28 +289,28 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
         CASE 
           WHEN preview IS NOT NULL THEN 
             json_build_object(
-              'type', 'text',
+              'type', 
+              CASE 
+                WHEN file_type LIKE 'text/%' THEN 'text'
+                WHEN file_type LIKE 'application/pdf' THEN 'pdf'
+                ELSE file_type
+              END,
               'data', 
               CASE 
                 WHEN file_type LIKE 'text/%' THEN 
-                  CASE 
-                    WHEN convert_from(substring(preview from 1 for 200), 'UTF8') ~ '[[:print:]]' THEN
-                      convert_from(substring(preview from 1 for 200), 'UTF8')
-                    ELSE 'Text content preview not available'
-                  END
+                  encode(preview, 'escape')::text
                 WHEN file_type LIKE 'application/pdf' THEN
                   'PDF content preview not available'
                 ELSE 
                   'Binary content preview not available'
               END
-            )::jsonb
+            )
           ELSE NULL 
         END as preview,
-        distance,
-        cosine_distance,
         similarity
-      FROM best_chunks
-      WHERE similarity > 0.3
+      FROM ranked_chunks
+      WHERE chunk_rank = 1
+        AND similarity > 0.1
       ORDER BY similarity DESC
       LIMIT 10
     `;
@@ -317,8 +332,6 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
       log('Document similarity details:', {
         id: row.id,
         filename: row.filename,
-        distance: row.distance,
-        cosine_distance: row.cosine_distance,
         similarity: row.similarity,
         preview
       });
@@ -364,5 +377,58 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
   } catch (error) {
     log('Error searching documents:', error);
     res.status(500).json({ error: 'Failed to search documents' });
+  }
+};
+
+export const deleteDocument = async (req: CustomRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user?.userId;
+
+    if (!userId) {
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    // First, get the document details from the database
+    const result = await query(
+      'SELECT * FROM documents WHERE id = $1 AND user_id = $2',
+      [parseInt(id), userId]
+    );
+    
+    const document = result.rows[0];
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    // Extract the S3 key from the file URL
+    const key = document.file_url.split('/').slice(-2).join('/');
+
+    // Delete file from S3
+    try {
+      await s3.deleteObject({
+        Bucket: process.env.AWS_BUCKET_NAME!,
+        Key: key
+      }).promise();
+    } catch (error) {
+      log('Error deleting file from S3:', error);
+      // Continue with database deletion even if S3 deletion fails
+    }
+
+    // Delete document chunks first (due to foreign key constraint)
+    await query(
+      'DELETE FROM document_chunks WHERE document_id = $1',
+      [parseInt(id)]
+    );
+
+    // Delete the document
+    await query(
+      'DELETE FROM documents WHERE id = $1 AND user_id = $2',
+      [parseInt(id), userId]
+    );
+
+    res.status(200).json({ message: 'Document deleted successfully' });
+  } catch (error) {
+    log('Error deleting document:', error);
+    res.status(500).json({ error: 'Failed to delete document' });
   }
 };

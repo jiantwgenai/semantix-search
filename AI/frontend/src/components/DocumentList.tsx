@@ -1,12 +1,13 @@
-
-import React, { useState } from 'react';
-import { MOCK_DOCUMENTS, Document } from "@/types";
+import React, { useState, useEffect } from 'react';
+import { Document } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Search, FileType, Download, Trash2, Calendar, FileIcon } from "lucide-react";
 import { format } from "date-fns";
+import { api } from '@/lib/api';
+import { useToast } from "@/components/ui/use-toast";
 
 interface DocumentListProps {
   onDocumentSelect: (document: Document) => void;
@@ -14,26 +15,57 @@ interface DocumentListProps {
 
 const DocumentList: React.FC<DocumentListProps> = ({ onDocumentSelect }) => {
   const [searchTerm, setSearchTerm] = useState("");
-  const [documents, setDocuments] = useState<Document[]>(MOCK_DOCUMENTS);
+  const [documents, setDocuments] = useState<Document[]>([]);
   const [activeTab, setActiveTab] = useState("all");
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    fetchDocuments();
+  }, []);
+
+  const fetchDocuments = async () => {
+    try {
+      setLoading(true);
+      const response = await api.get('/documents');
+      console.log('Fetched documents:', response.data);
+      setDocuments(response.data);
+    } catch (error) {
+      console.error('Error fetching documents:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to fetch documents',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const deleteDocument = async (id: number) => {
+    try {
+      await api.delete(`/documents/${id}`);
+      toast({
+        title: 'Success',
+        description: 'Document deleted successfully',
+      });
+      fetchDocuments();
+    } catch (error) {
+      toast({
+        title: 'Error',
+        description: 'Failed to delete document',
+        variant: 'destructive',
+      });
+    }
+  };
 
   const filteredDocuments = documents.filter(doc => {
     if (searchTerm === "") return true;
-    return doc.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return doc.filename.toLowerCase().includes(searchTerm.toLowerCase());
   }).filter(doc => {
     if (activeTab === "all") return true;
-    return doc.type === activeTab;
+    return doc.file_type.toLowerCase().includes(activeTab.toLowerCase());
   });
-
-  const deleteDocument = (id: string) => {
-    setDocuments(documents.filter(doc => doc.id !== id));
-  };
-
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-    return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
-  };
 
   const formatDate = (dateString: string) => {
     try {
@@ -44,21 +76,27 @@ const DocumentList: React.FC<DocumentListProps> = ({ onDocumentSelect }) => {
   };
 
   const getIconForFileType = (type: string) => {
-    switch (type) {
-      case 'pdf':
-        return <FileText className="h-10 w-10 text-red-500" />;
-      case 'docx':
-        return <FileText className="h-10 w-10 text-blue-500" />;
-      case 'pptx':
-        return <FileText className="h-10 w-10 text-orange-500" />;
-      case 'xlsx':
-        return <FileText className="h-10 w-10 text-green-500" />;
-      case 'txt':
-        return <FileText className="h-10 w-10 text-gray-500" />;
-      default:
-        return <FileIcon className="h-10 w-10 text-gray-500" />;
+    if (type.includes('pdf')) {
+      return <FileText className="h-10 w-10 text-red-500" />;
+    } else if (type.includes('word') || type.includes('docx')) {
+      return <FileText className="h-10 w-10 text-blue-500" />;
+    } else if (type.includes('powerpoint') || type.includes('pptx')) {
+      return <FileText className="h-10 w-10 text-orange-500" />;
+    } else if (type.includes('excel') || type.includes('xlsx')) {
+      return <FileText className="h-10 w-10 text-green-500" />;
+    } else if (type.includes('text')) {
+      return <FileText className="h-10 w-10 text-gray-500" />;
     }
+    return <FileIcon className="h-10 w-10 text-gray-500" />;
   };
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -107,15 +145,15 @@ const DocumentList: React.FC<DocumentListProps> = ({ onDocumentSelect }) => {
                   <CardContent className="p-0">
                     <div className="flex items-center p-4">
                       <div className="rounded bg-muted p-2 mr-4">
-                        {getIconForFileType(doc.type)}
+                        {getIconForFileType(doc.file_type)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{doc.name}</p>
+                        <p className="font-medium truncate">{doc.filename}</p>
                         <div className="flex items-center text-sm text-muted-foreground mt-1">
                           <Calendar className="h-3 w-3 mr-1" />
-                          <span>{formatDate(doc.uploadDate)}</span>
+                          <span>{formatDate(doc.created_at)}</span>
                           <span className="mx-2">•</span>
-                          <span>{formatSize(doc.size)}</span>
+                          <span>{doc.file_type}</span>
                         </div>
                       </div>
                       <div className="flex items-center">
@@ -124,7 +162,7 @@ const DocumentList: React.FC<DocumentListProps> = ({ onDocumentSelect }) => {
                           size="icon"
                           onClick={(e) => {
                             e.stopPropagation();
-                            // Download logic
+                            window.open(doc.file_url, '_blank');
                           }}
                           className="text-muted-foreground hover:text-primary"
                           aria-label="Download"

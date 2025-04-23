@@ -7,6 +7,10 @@ DROP TABLE IF EXISTS document_chunks;
 DROP TABLE IF EXISTS documents;
 DROP TABLE IF EXISTS users;
 
+-- Create document status enum type
+DROP TYPE IF EXISTS document_status;
+CREATE TYPE document_status AS ENUM ('PROCESSING', 'COMPLETED', 'FAILED');
+
 -- Create users table
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
@@ -27,6 +31,7 @@ CREATE TABLE IF NOT EXISTS documents (
     file_url TEXT NOT NULL,
     file_type VARCHAR(100) NOT NULL,
     embedding vector(384) NOT NULL,
+    status document_status DEFAULT 'PROCESSING',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 

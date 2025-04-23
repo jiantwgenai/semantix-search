@@ -1,7 +1,6 @@
-// backend/src/routes/document.routes.ts
 import express from 'express';
 import multer from 'multer';
-import { uploadDocument, getDocument, searchDocuments } from '../controllers/document.controller';
+import { uploadDocument, getDocument, searchDocuments, getDocuments, deleteDocument } from '../controllers/document.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 
 const router = express.Router();
@@ -14,8 +13,10 @@ const upload = multer({
   }
 });
 
+router.get('/', authenticateToken, getDocuments);
 router.post('/upload', authenticateToken, upload.single('file'), uploadDocument);
 router.get('/:id', authenticateToken, getDocument);
 router.post('/search', authenticateToken, searchDocuments);
+router.delete('/:id', authenticateToken, deleteDocument);
 
-export default router;
+export default router; 

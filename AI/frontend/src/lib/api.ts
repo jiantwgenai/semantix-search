@@ -3,31 +3,44 @@ import axios from 'axios';
 
 const API_BASE_URL = 'http://localhost:3001/api';
 
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_BASE_URL,
 });
 
+// Add request interceptor to include auth token
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// Add response interceptor to handle common errors
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Handle unauthorized access
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
+    return Promise.reject(error);
+  }
+);
+
 export const uploadDocuments = async (files: File[]) => {
   try {
-    const token = localStorage.getItem('token');
-    console.log('Using token:', token); // Debug log
-
-    if (!token) {
-      console.error('No authentication token found in localStorage');
-      throw new Error('No authentication token found');
-    }
-
     const formData = new FormData();
     files.forEach((file) => {
       console.log('Appending file to FormData:', file.name);
-      formData.append('file', file);
+      formData.append('files', file);
     });
     
     console.log('Sending upload request to:', `${API_BASE_URL}/documents/upload`);
     const response = await api.post('/documents/upload', formData, {
       headers: {
-        'Content-Type': 'multipart/form-data',
-        'Authorization': `Bearer ${token}`
+        'Content-Type': 'multipart/form-data'
       },
     });
     

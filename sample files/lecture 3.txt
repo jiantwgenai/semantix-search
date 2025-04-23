@@ -1,0 +1,89 @@
+- Slip days can be used up to 3 days after a submission (but using too many slip days will affect your grade)
+
+- This lecture:
+	- Invariants & constructors
+	- access modifiers
+	- defensive programming
+- type - set of values --> (which values are allowed?)
+- Invariant - a statment that should alwas be true (never changes)
+
+- Class invariant: relationship between fields; truthfulness not affected by calling methods (e.g. counts >= 0 in Counter class --> counts must be nonnegative)
+
+- Loop invariant - relationship between local variables, truthfulness not affected by loop iterations
+
+- invariants expressed in comments, you have to enforce them
+
+- write code to check invariants, catches bugs
+
+- int counts - allowed states [-2 billion, 2 billion]--> want counts in [0,9999]
+
+- Can any method in Counter take counter above 9999? Yes, void increments().
+
+		void increment() {	
+			counts += 1;
+			if (counts == 10000)
+				reset();
+		}
+- Static typing enforces common invariants automatically (e.g. int, String must be their type)
+
+- How to intialize fields to represent a state specified by a user? How to establish that the class invariant is satisfied from the start?
+
+- Constructor
+	- like a method w/ no return type, name must match the class
+	- invoked with new-expression
+	- Job: truthify the class invariant, initialize all field values
+	- Java provides a class with a default constructor w/ no parameters and initializes all fields to default values for their type (Objects's default value is null, primitive numbers have 0, boolean is ??)
+
+- Explicit constructor with no constructors
+	Counter() {
+		counts = 0;
+	}
+
+	
+- Constructor:
+	Point(double x,double y) {
+		this.x = x;
+		this.y = y;
+	}
+
+- Bugs violate invariants
+
+- Dividing responsibilities (client vs. implemeter)
+
+	- clients uses classes to solve problems
+	- implemeter writes code in class's .java file, might be a clinet of other classes
+- Refers to a role with respect to a class in a particular context
+	- everyone is a client of String
+	- can be implementer of Fraction class when writing in Fraction.java, a client in FractionDemo.java
+
+- IMPLEMENTER must maintain class invariant, provide correct behavior
+- Client should be able to use class for any purpose and never get incorrect behavior
+
+- How can implementer prevent clients from breaking things?
+
+- Encapsulation with access modifiers (public vs. private)
+	- public - anyone can acces fields/invoke methods
+	- private - only accessible by implementer in .java file
+	- If a class is public, fields should always be private
+	- public methods provide meaningful behavior to clients, helper methods should be private
+
+- OOP features include encapsulation, inheritance, polymorphism
+
+- getter/setter methods has benefits and drawbacks
+
+	-avoid get prefixes
+
+- Defensive programming:
+
+- Implementer bugs?
+- add a method to check wheter the invariant is true
+
+	private void assertInv() {};
+
+- asser that the invariant is true, want the program to crash if ever false, assert at the end of every method
+
+- assert <boolean expression>; //assert reserved word --> crashes program if condition is false
+
+- Must add -ea in IntelliJ
+
+
