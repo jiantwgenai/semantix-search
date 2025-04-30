@@ -1,18 +1,40 @@
 # Dependencies
 node_modules/
-npm-debug.log
-yarn-debug.log
-yarn-error.log
-
-# Environment variables
+venv/
+__pycache__/
+*.pyc
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
 .env
-.env.local
-.env.*.local
+.venv
+env/
+ENV/
 
-# Build files
+# Package files
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+parts/
+bin/
+var/
+sdist/
+develop-eggs/
+.installed.cfg
+lib/
+lib64/
+
+# Build outputs
 dist/
 build/
 *.tsbuildinfo
+.next/
+out/
+.nuxt/
+.nitro/
+.output/
 
 # IDE and editor files
 .idea/
@@ -20,30 +42,137 @@ build/
 *.swp
 *.swo
 .DS_Store
+*.sublime-workspace
+*.sublime-project
+.project
+.settings/
+.classpath
 
-# Logs
+# Logs and databases
 logs/
 *.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.sqlite
+*.sqlite3
+*.db
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env*.local
+
+# Cache directories
+.cache/
+.parcel-cache/
+.npm/
+.eslintcache
+.stylelintcache
+.pytest_cache/
+__pycache__/
+.mypy_cache/
+
+# Testing
+coverage/
+.coverage
+htmlcov/
+.tox/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
 
 # Temporary files
 tmp/
 temp/
+.temp/
+.tmp/
 
-# Coverage directory
-coverage/
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
 
-# Debug
-.debug/
-debug.log
+# Project specific
+backend/dist/
+frontend/dist/
+frontend/.next/
+frontend/out/
+backend/uploads/
+*.pem
+.vercel
+.turbo
+
+# Python virtual environment
+venv/
+.venv/
+**/venv/
+**/site-packages/
+**/__pycache__/
+backend/venv/
+backend/lib/
+backend/lib64/
+backend/bin/
+backend/include/
+backend/share/
+
+# Specific Python patterns
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.py[cod]
+*$py.class
+
+# Large model files and data
+*.bin
+*.h5
+*.pkl
+*.model
+*.pt
+model/
+models/
+data/
+datasets/
 
 # Misc
 .pnp/
 .pnp.js
 
-# Testing
-.env.development.local
-.env.test.local
-.env.production.local
+# Debug
+.debug/
+debug.log
 
-# OS
-Thumbs.db 
+# Examples directory
+examples/
+AI/examples/
+**/examples/
+
+# Archive files
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+*.gz
+
+# Node dependencies
+**/node_modules/
+
+# Build outputs
+**/dist/
+**/build/
+*.tsbuildinfo
+
+# Environment variables
+.env.*.local 

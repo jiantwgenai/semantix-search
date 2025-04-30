@@ -12,6 +12,7 @@ const axiosInstance = axios.create({
   maxContentLength: Infinity
 });
 
+
 export const testEmbeddingService = async (): Promise<boolean> => {
   try {
     log('Testing embedding service connection...');

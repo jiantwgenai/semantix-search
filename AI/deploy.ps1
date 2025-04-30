@@ -2,15 +2,15 @@
 
 # Configuration
 $config = @{
-    Region = "us-east-1"
+    Region = "us-east-2"
     StackName = "document-search-stack"
     Environment = "production"
     InstanceType = "t2.micro"
     DBInstanceClass = "db.t3.micro"
-    DBName = "documentsearch"
-    DBUser = "docadmin"
-    DBPassword = "ChangeThisPassword123!"
-    BucketName = "document-search-files-$(Get-Random -Minimum 1000 -Maximum 9999)"
+    DBName = "document_search"
+    DBUser = "postgres"
+    DBPassword = "test123$"
+    BucketName = "document-search-files-4836"
     DomainName = "documents.yourdomain.com"
 }
 
@@ -40,29 +40,29 @@ function Test-NodeJS {
 
 # Function to create S3 bucket
 function New-S3Bucket {
-    param (
-        [string]$BucketName,
-        [string]$Region
-    )
+    # param (
+    #     [string]$BucketName,
+    #     [string]$Region
+    # )
     
-    Write-Host "Creating S3 bucket: $BucketName"
-    aws s3api create-bucket --bucket $BucketName --region $Region
+    # Write-Host "Creating S3 bucket: $BucketName"
+    # aws s3api create-bucket --bucket $BucketName --region $Region --create-bucket-configuration LocationConstraint=$Region
     
-    # Configure CORS
-    $corsConfig = @{
-        "CORSRules" = @(
-            @{
-                "AllowedHeaders" = @("*")
-                "AllowedMethods" = @("GET", "PUT", "POST", "DELETE")
-                "AllowedOrigins" = @("*")
-                "ExposeHeaders" = @()
-            }
-        )
-    } | ConvertTo-Json
+    # # Configure CORS
+    # $corsConfig = @{
+    #     "CORSRules" = @(
+    #         @{
+    #             "AllowedHeaders" = @("*")
+    #             "AllowedMethods" = @("GET", "PUT", "POST", "DELETE")
+    #             "AllowedOrigins" = @("*")
+    #             "ExposeHeaders" = @()
+    #         }
+    #     )
+    # } | ConvertTo-Json
     
-    $corsConfig | Out-File -FilePath "cors.json"
-    aws s3api put-bucket-cors --bucket $BucketName --cors-configuration file://cors.json
-    Remove-Item cors.json
+    # $corsConfig | Out-File -FilePath "cors.json"
+    # aws s3api put-bucket-cors --bucket $BucketName --cors-configuration file://cors.json
+    # Remove-Item cors.json
 }
 
 # Function to create RDS instance
@@ -109,11 +109,11 @@ sudo npm install -g pm2
     $userData | Out-File -FilePath "userdata.sh"
     
     aws ec2 run-instances `
-        --image-id ami-0c55b159cbfafe1f0 `  # Ubuntu 20.04 LTS
+        --image-id ami-0c55b159cbfafe1f0 `
         --count 1 `
         --instance-type $InstanceType `
-        --key-name "document-search-key" `
-        --security-groups "document-search-sg" `
+        --key-name document-search-key `
+        --security-groups document-search-sg `
         --user-data file://userdata.sh `
         --region $Region
     
@@ -174,7 +174,7 @@ function Deploy-Frontend {
     )
     
     Write-Host "Building frontend..."
-    Set-Location semantix-document-search
+    Set-Location frontend
     npm install
     npm run build
     
@@ -197,24 +197,24 @@ REACT_APP_REGION=$($config.Region)
 # Main deployment process
 function Start-Deployment {
     # Check prerequisites
-    if (-not (Test-AWSCLI)) { return }
-    if (-not (Test-NodeJS)) { return }
+    # if (-not (Test-AWSCLI)) { return }
+    # if (-not (Test-NodeJS)) { return }
     
-    Write-Host "Starting deployment process..."
+    # Write-Host "Starting deployment process..."
     
-    # Create S3 bucket
-    New-S3Bucket -BucketName $config.BucketName -Region $config.Region
+    # # Create S3 bucket
+    # New-S3Bucket -BucketName $config.BucketName -Region $config.Region
     
-    # Create RDS instance
-    New-RDSInstance `
-        -DBName $config.DBName `
-        -DBUser $config.DBUser `
-        -DBPassword $config.DBPassword `
-        -InstanceClass $config.DBInstanceClass `
-        -Region $config.Region
+    # # Create RDS instance
+    # # New-RDSInstance `
+    # #     -DBName $config.DBName `
+    # #     -DBUser $config.DBUser `
+    # #     -DBPassword $config.DBPassword `
+    # #     -InstanceClass $config.DBInstanceClass `
+    # #     -Region $config.Region
     
-    # Create EC2 instance
-    New-EC2Instance -InstanceType $config.InstanceType -Region $config.Region
+    # # Create EC2 instance
+    # New-EC2Instance -InstanceType $config.InstanceType -Region $config.Region
     
     # Deploy backend
     Deploy-Backend -Environment $config.Environment
@@ -226,4 +226,4 @@ function Start-Deployment {
 }
 
 # Start the deployment
-Start-Deployment 
+Start-Deployment

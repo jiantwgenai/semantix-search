@@ -1,0 +1,90 @@
+Hi, Junghoon and Jason!
+
+This is Luke (lyt5). I'll be your grader
+for A4. I'm doing the manual grading of your submission; the
+autograder feedback is linked to from CMSX.
+
+-----------------------------------------------------------------------
+
+Your total scores for each manually-graded category are:
+
+Implementation constraints:     16.5 out of  18
+Code style:                        3 out of   3
+Reflection:                        5 out of   5
+
+Total:                          24.5 out of  26
+
+-----------------------------------------------------------------------
+
+## Implementation
+
+### Variable, Application, Operation (9pts)
+
+For these three classes, I will be checking for thoroughness of
+specifications/documentation and whether the implementation was
+recursive.
+
+-1: No class comment.
+
+### ExpressionTest (5pts)
+
+I will be checking four tests in detail against their specifications:
+  * `VariableExpressionTest.testOptimizeUnbound()`
+  * `OperationExpressionTest.testDependencies()`
+  * `OperationExpressionTest.testPostfixRecursive()`
+  * `ApplicationExpressionTest.testEvalAbsUnbound()`
+
+No deductions
+
+### CsvEvaluator (2pts)
+
+For `CsvEvaluator`, I will be primarily checking for the implementation constraint of `colToLetters()`.
+
+-0: No defensive programming for preconditions in `colToLetters()`.
+
+## Challenge extensions
+
+### TreeVarTable (1pts)
+
+GRADER: Delete the below if they didn't submit TreeVarTable, or if the file is the same as RpnCalc.
+
+Congratulations on attempting this challenge extension!
+The autograder will verify the correctness of your implementation.
+I will be evaluating the following:
+
+* Is your class implemented using a Binary Search Tree data structure?
+* Is your implementation appropriately documented?
+
+Note that autograder points will be forfeit if your implementation does not use a BST or just wraps a Map from Java's collection library.
+
+Manual grading checks:
+
+-0.5: Is not appropriately documented
+  * Missing Class comment
+
+### RpnCalc (1pts)
+
+Congratulations on attempting this challenge extension!
+The autograder will verify the correctness of your implementation.
+
+I will be evaluating the following:
+  * Exception catching and handling
+  * Correct IO behavior
+
+No deductions
+
+## Code Style (3pts)
+
+No deductions
+
+## Reflection (5pts)
+
+No deductions
+
+## Additional comments
+
+Here are some suggestions about how to improve your code for the next
+assignment:
+
+Congrats on completing A4, especially for attempting the challenge extensions!
+Also, remember to remove TODO comments after you finish them.

@@ -1,0 +1,303 @@
+# Document Search Application Documentation
+
+## Table of Contents
+1. Architecture Overview
+2. Technology Stack
+3. Components
+4. Deployment Guide
+5. Security Considerations
+6. Troubleshooting
+
+## 1. Architecture Overview
+
+The application consists of three main components:
+- Frontend (React)
+- Backend (Node.js/Express)
+- Embedding Service (Python)
+
+### System Flow
+1. Users interact with the React frontend
+2. Frontend communicates with backend API
+3. Backend handles:
+   - File storage (AWS S3)
+   - Database operations (PostgreSQL)
+   - Authentication (JWT)
+4. Embedding service generates vector embeddings for documents and search queries
+
+## 2. Technology Stack
+
+### Frontend
+- React with TypeScript
+- Vite for build tooling
+- Key dependencies:
+  - axios for API calls
+  - antd for UI components
+  - react-router for navigation
+
+### Backend
+- Node.js with Express
+- TypeScript
+- Key dependencies:
+  - express for API server
+  - pg for PostgreSQL connection
+  - aws-sdk for S3 integration
+  - jsonwebtoken for authentication
+  - multer for file uploads
+  - cors for Cross-Origin Resource Sharing
+
+### Embedding Service
+- Python
+- Key dependencies:
+  - Flask for API
+  - sentence-transformers for embeddings
+
+### Infrastructure
+- AWS S3 for document storage
+- PostgreSQL with pgvector extension for vector similarity search
+- PM2 for process management
+- Nginx for reverse proxy
+
+## 3. Components
+
+### Frontend Components
+- Authentication (Login/Register)
+- Document Upload
+- Document List
+- Search Interface
+- Document Preview
+
+### Backend Services
+- Authentication Service
+- Document Management
+- Search Service
+- File Storage Service
+- Embedding Integration
+
+### Database Schema
+- Users table
+- Documents table
+- Document_chunks table (for vector search)
+
+## 4. Deployment Guide
+
+### Prerequisites
+- Node.js (v14+)
+- Python 3.8+
+- PostgreSQL with pgvector
+- AWS Account
+- PM2
+- Nginx
+
+### Step-by-Step Deployment
+
+1. **Database Setup**
+```sql
+CREATE EXTENSION vector;
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) UNIQUE NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+-- Additional tables as per schema
+```
+
+2. **Backend Deployment**
+```bash
+# Clone repository
+git clone <repository-url>
+cd backend
+
+# Install dependencies
+npm install
+
+# Build TypeScript
+npm run build
+
+# Set up environment variables
+nano .env
+# Add necessary environment variables
+
+# Start with PM2
+pm2 start ecosystem.config.js
+```
+
+3. **Frontend Deployment**
+```bash
+cd frontend
+npm install
+npm run build
+
+# Configure Nginx
+sudo nano /etc/nginx/sites-available/frontend
+# Add Nginx configuration
+sudo ln -s /etc/nginx/sites-available/frontend /etc/nginx/sites-enabled/
+sudo nginx -t
+sudo systemctl restart nginx
+```
+
+4. **Embedding Service Setup**
+```bash
+cd backend
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+```
+
+### PM2 Configuration (ecosystem.config.js)
+```javascript
+module.exports = {
+  apps: [
+    {
+      name: "embedding-service",
+      cwd: "/home/ubuntu/backend",
+      script: "/home/ubuntu/backend/venv/bin/python3",
+      args: "embedding_service.py",
+      env: {
+        PYTHONPATH: "/home/ubuntu/backend",
+        VIRTUAL_ENV: "/home/ubuntu/backend/venv"
+      }
+    },
+    {
+      name: "backend",
+      cwd: "/home/ubuntu/backend",
+      script: "./dist/app.js",
+      env: {
+        PORT: 3001,
+        NODE_ENV: "production",
+        // Other environment variables
+      }
+    },
+    {
+      name: "frontend",
+      cwd: "/var/www/frontend",
+      script: "serve",
+      env: {
+        PM2_SERVE_PATH: ".",
+        PM2_SERVE_PORT: 3000,
+        PM2_SERVE_SPA: "true"
+      }
+    }
+  ]
+}
+```
+
+### Nginx Configuration
+```nginx
+server {
+    listen 80;
+    server_name _;
+
+    location / {
+        proxy_pass http://localhost:3000;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /api {
+        proxy_pass http://localhost:3001;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+## 5. Security Considerations
+
+1. **Environment Variables**
+   - Store sensitive information in .env files
+   - Never commit secrets to version control
+   - Rotate credentials regularly
+
+2. **Authentication**
+   - JWT-based authentication
+   - Secure password hashing
+   - Token expiration
+
+3. **File Upload Security**
+   - File type validation
+   - Size limits
+   - Virus scanning (recommended)
+
+4. **API Security**
+   - CORS configuration
+   - Rate limiting
+   - Input validation
+
+## 6. Troubleshooting
+
+### Common Issues
+
+1. **CORS Errors**
+   - Check CORS configuration in backend
+   - Verify frontend origin matches allowed origins
+   - Check for proper headers in requests
+
+2. **File Upload Issues**
+   - Check S3 bucket permissions
+   - Verify AWS credentials
+   - Check file size limits
+
+3. **Search Not Working**
+   - Verify embedding service is running
+   - Check PostgreSQL vector extension
+   - Verify document chunks are properly stored
+
+4. **PM2 Process Management**
+```bash
+# List processes
+pm2 list
+
+# View logs
+pm2 logs
+
+# Restart processes
+pm2 restart all
+
+# Save process list
+pm2 save
+
+# Setup startup script
+pm2 startup
+```
+
+### Monitoring
+
+1. **Application Logs**
+   - PM2 logs
+   - Nginx access/error logs
+   - Application-specific logs
+
+2. **Performance Monitoring**
+   - PM2 monit
+   - Database query performance
+   - API response times
+
+3. **Resource Usage**
+   - CPU/Memory usage
+   - Disk space
+   - Network bandwidth
+
+### Maintenance
+
+1. **Regular Updates**
+   - npm packages
+   - Python packages
+   - System updates
+   - Security patches
+
+2. **Backup Strategy**
+   - Database backups
+   - Document backups
+   - Configuration backups
+
+3. **Scaling Considerations**
+   - Horizontal scaling
+   - Load balancing
+   - Caching strategies

@@ -28,8 +28,8 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:5174',
-    'https://a456-68-237-35-146.ngrok-free.app',
-    'https://6c4a-68-237-35-146.ngrok-free.app'
+    'http://3.128.30.11:3001',
+    'http://3.128.30.11'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -41,6 +41,7 @@ app.use(express.json());
 // Debug logging middleware
 app.use((req, res, next) => {
   log(`${req.method} ${req.url}`);
+  console.log(`${new Date().toISOString()} - ${req.method} ${req.url}`);
   next();
 });
 
