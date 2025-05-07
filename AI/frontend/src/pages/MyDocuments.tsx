@@ -78,7 +78,10 @@ export function MyDocuments() {
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold">My Documents</h1>
-        <Button onClick={() => navigate('/upload')}>Upload New Document</Button>
+        <div className="flex gap-4">
+          <Button onClick={() => navigate('/upload')}>Upload New Document</Button>
+          <Button onClick={() => navigate('/admin')}>User Administration</Button>
+        </div>
       </div>
 
       <div className="grid gap-6">
@@ -128,4 +131,4 @@ export function MyDocuments() {
       </div>
     </div>
   );
-} 
+}
