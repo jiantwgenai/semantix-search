@@ -8,6 +8,7 @@ import { FileText, Search, FileType, Download, Trash2, Calendar, FileIcon } from
 import { format } from "date-fns";
 import { api } from '@/lib/api';
 import { useToast } from "@/components/ui/use-toast";
+import { useNavigate } from "react-router-dom";
 
 interface DocumentListProps {
   onDocumentSelect: (document: Document) => void;
@@ -19,6 +20,7 @@ const DocumentList: React.FC<DocumentListProps> = ({ onDocumentSelect }) => {
   const [activeTab, setActiveTab] = useState("all");
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchDocuments();
@@ -59,13 +61,38 @@ const DocumentList: React.FC<DocumentListProps> = ({ onDocumentSelect }) => {
     }
   };
 
-  const filteredDocuments = documents.filter(doc => {
-    if (searchTerm === "") return true;
-    return doc.filename.toLowerCase().includes(searchTerm.toLowerCase());
-  }).filter(doc => {
-    if (activeTab === "all") return true;
-    return doc.file_type.toLowerCase().includes(activeTab.toLowerCase());
-  });
+  const matchesTab = (doc: Document, tab: string) => {
+    if (tab === "all") return true;
+    const type = doc.file_type.toLowerCase();
+    switch (tab) {
+      case "pdf":
+        return type === "application/pdf";
+      case "docx":
+        return (
+          type === "application/msword" ||
+          type === "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+      case "pptx":
+        return (
+          type === "application/vnd.ms-powerpoint" ||
+          type === "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        );
+      case "txt":
+        return (
+          type === "text/plain" ||
+          type === "application/vnd.oasis.opendocument.text"
+        );
+      default:
+        return false;
+    }
+  };
+
+  const filteredDocuments = documents
+    .filter(doc => {
+      if (searchTerm === "") return true;
+      return doc.filename.toLowerCase().includes(searchTerm.toLowerCase());
+    })
+    .filter(doc => matchesTab(doc, activeTab));
 
   const formatDate = (dateString: string) => {
     try {
@@ -140,7 +167,7 @@ const DocumentList: React.FC<DocumentListProps> = ({ onDocumentSelect }) => {
                 <Card 
                   key={doc.id}
                   className="overflow-hidden hover:shadow-md transition-shadow cursor-pointer"
-                  onClick={() => onDocumentSelect(doc)}
+                  onClick={() => window.open(doc.file_url, '_blank')}
                 >
                   <CardContent className="p-0">
                     <div className="flex items-center p-4">

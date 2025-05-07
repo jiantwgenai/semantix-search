@@ -1,4 +1,5 @@
 import { JwtPayload } from 'jsonwebtoken';
+import { Request, Response } from 'express';
 
 declare module 'express' {
     interface Request {
@@ -7,4 +8,11 @@ declare module 'express' {
             email: string;
         }
     }
+}
+
+export interface AuthenticatedRequest extends Request {
+    user?: {
+        userId: number;
+        email: string;
+    };
 }

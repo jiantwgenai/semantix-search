@@ -1,7 +1,8 @@
 // semantix-document-search/src/lib/api.ts
 import axios from 'axios';
 
-const API_BASE_URL = 'http://3.145.173.67:3001/api';
+const API_BASE_URL = 'http://localhost:3001/api';
+// const API_BASE_URL = 'http://18.224.79.195:3001/api';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -125,3 +126,16 @@ export const searchDocuments = async (query: string, options: { mode: "semantic"
 export const logout = () => {
   localStorage.removeItem('token');
 };
+
+export async function register(email: string, password: string) {
+  const response = await fetch("/api/auth/register", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password }),
+  });
+  if (response.status !== 200 && response.status !== 201) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(error.error || "Registration failed");
+  }
+  return response.json();
+}

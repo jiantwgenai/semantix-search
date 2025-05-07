@@ -1,5 +1,5 @@
 // backend/src/config/database.ts
-import { Pool } from 'pg';
+import { Pool, PoolClient } from 'pg';
 import dotenv from 'dotenv';
 import debug from 'debug';
 import path from 'path';
@@ -9,8 +9,7 @@ const log = debug('app:database');
 // Load environment variables from multiple possible locations
 const envPaths = [
   path.resolve(__dirname, '..', '..', '.env'),  // backend/.env
-  path.resolve(__dirname, '..', '.env'),        // backend/src/.env
-  path.resolve(process.cwd(), '.env')           // current working directory
+       // current working directory
 ];
 
 let envLoaded = false;
@@ -26,7 +25,7 @@ for (const envPath of envPaths) {
         DB_PORT: process.env.DB_PORT,
         DB_NAME: process.env.DB_NAME,
         DB_USER: process.env.DB_USER,
-        hasPassword: !!process.env.DB_PASSWORD
+        hasPassword: process.env.DB_PASSWORD
       });
       break;
     }
@@ -86,7 +85,7 @@ pool.on('connect', () => {
   log('Database connection established');
 });
 
-pool.on('error', (err) => {
+pool.on('error', (err: Error) => {
   log('Database connection error:', err);
   console.error('Database error:', err);
 });

@@ -9,6 +9,10 @@ import debug from 'debug';
 import { JwtPayload } from 'jsonwebtoken';
 import { query } from '../config/database';
 import AWS from 'aws-sdk';
+import { generatePreview } from '../services/preview.service';
+import pdf from 'pdf-parse';
+import mammoth from 'mammoth';
+import axios from 'axios';
 
 const s3 = new S3({
   accessKeyId: process.env.AWS_ACCESS_KEY_ID,
@@ -36,6 +40,15 @@ interface Document {
   similarity?: number;
 }
 
+// Helper function to check if it's a "click to view" preview
+function isClickToViewPreview(preview: any): boolean {
+  if (typeof preview === 'object' && preview?.data) {
+    return preview.data === 'PDF content preview available - click to view' ||
+           preview.data === 'Word document preview available - click to view';
+  }
+  return false;
+}
+
 export const uploadDocument = async (req: CustomRequest, res: Response) => {
   try {
     const userId = req.user?.userId;
@@ -50,22 +63,70 @@ export const uploadDocument = async (req: CustomRequest, res: Response) => {
     const uploadResults = await Promise.all(
       req.files.map(async (file) => {
         try {
-          // Generate embedding for the file content
-          const fileContent = file.buffer.toString('utf-8');
-          const embedding = await generateEmbedding(fileContent);
+          // Extract text based on file type
+          let extractedText = '';
+          
+          if (file.mimetype === 'application/pdf') {
+            try {
+              const pdfData = await pdf(file.buffer);
+              extractedText = pdfData.text;
+              console.log('Extracted PDF text:', extractedText.substring(0, 100) + '...');
+            } catch (err) {
+              console.error('Error extracting PDF text:', err);
+            }
+          } else if (file.mimetype === 'application/msword' || 
+                     file.mimetype === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document') {
+            try {
+              const result = await mammoth.extractRawText({ buffer: file.buffer });
+              extractedText = result.value;
+              console.log('Extracted Word text:', extractedText.substring(0, 100) + '...');
+            } catch (err) {
+              console.error('Error extracting Word text:', err);
+            }
+          } else if (file.mimetype.startsWith('text/')) {
+            extractedText = file.buffer.toString('utf-8');
+          }
+          
+          // Use extracted text for embeddings if available
+          const contentForEmbedding = extractedText || file.buffer.toString('utf-8');
+          const embedding = await generateEmbedding(contentForEmbedding);
 
-          // Upload file to S3
+          // Upload to S3
           const fileUrl = await uploadFileToS3(file, userId.toString());
 
-          // Create document in database
+          // Create document
           const documentId = await createDocument({
             user_id: userId,
             filename: file.originalname,
             file_url: fileUrl,
             file_type: file.mimetype,
             embedding,
-            content: fileContent
+            content: contentForEmbedding,
+            extracted_text: extractedText // Pass to document model
           });
+
+          // Create document chunks with the extracted text
+          const chunkSize = 1000;
+          const chunks = [];
+          
+          // Use extracted text for chunks
+          const textToChunk = extractedText || file.originalname;
+          
+          for (let i = 0; i < textToChunk.length; i += chunkSize) {
+            chunks.push(textToChunk.slice(i, i + chunkSize));
+          }
+          
+          // Insert chunks
+          await Promise.all(chunks.map(async (chunk, index) => {
+            const chunkEmbedding = await generateEmbedding(chunk);
+            const chunkBuffer = Buffer.from(chunk, 'utf8');
+            
+            await query(
+              `INSERT INTO document_chunks (document_id, chunk_number, content, embedding)
+               VALUES ($1, $2, $3, $4)`,
+              [documentId, index + 1, chunkBuffer, `[${chunkEmbedding.join(',')}]`]
+            );
+          }));
 
           return {
             success: true,
@@ -225,6 +286,8 @@ export const getDocuments = async (req: CustomRequest, res: Response) => {
       }
     }));
 
+    // Add this before the response is sent
+    log('Response data:', JSON.stringify(documents[0]?.preview));
     res.json(documents);
   } catch (error) {
     log('Error fetching documents:', error);
@@ -247,12 +310,11 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
       return res.status(400).json({ error: 'Search query is required' });
     }
 
-    // First check if there are any documents for this user
+    // First check if there are any documents
     const userDocs = await query(
-      'SELECT COUNT(*) FROM documents WHERE user_id = $1',
-      [userId]
+      'SELECT COUNT(*) FROM documents'
     );
-    log('User document count:', userDocs.rows[0].count);
+    log('Total document count:', userDocs.rows[0].count);
 
     const queryEmbedding = await generateEmbedding(searchQuery);
     log('Generated embedding length:', queryEmbedding.length);
@@ -272,7 +334,7 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
           1 - (dc.embedding <=> $1) as similarity
         FROM documents d
         JOIN document_chunks dc ON d.id = dc.document_id
-        WHERE d.user_id = $2
+        WHERE 1=1
       ),
       ranked_chunks AS (
         SELECT 
@@ -286,6 +348,7 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
         file_type,
         file_url,
         created_at,
+        (
         CASE 
           WHEN preview IS NOT NULL THEN 
             json_build_object(
@@ -293,24 +356,33 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
               CASE 
                 WHEN file_type LIKE 'text/%' THEN 'text'
                 WHEN file_type LIKE 'application/pdf' THEN 'pdf'
+                  WHEN file_type LIKE 'application/msword' OR 
+                       file_type LIKE 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' THEN 'word'
                 ELSE file_type
               END,
               'data', 
               CASE 
                 WHEN file_type LIKE 'text/%' THEN 
-                  encode(preview, 'escape')::text
+                    COALESCE(NULLIF(substring(convert_from(preview, 'UTF8') from 1 for 500), ''), 'No preview available')
                 WHEN file_type LIKE 'application/pdf' THEN
-                  'PDF content preview not available'
-                ELSE 
-                  'Binary content preview not available'
+                    'PDF content preview available - click to view'
+                  WHEN file_type LIKE 'application/msword' OR 
+                       file_type LIKE 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' THEN
+                    'Word document preview available - click to view'
+                  ELSE 'Binary content preview not available'
               END
             )
-          ELSE NULL 
-        END as preview,
+            ELSE
+              json_build_object(
+                'type', file_type,
+                'data', 'Preview not available'
+              )
+          END
+        ) as preview,
         similarity
       FROM ranked_chunks
       WHERE chunk_rank = 1
-        AND similarity > 0.1
+        AND similarity > 0.25
       ORDER BY similarity DESC
       LIMIT 10
     `;
@@ -323,12 +395,15 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
       userId
     });
 
-    const result = await query(sqlQuery, [queryVector, userId]);
+    const result = await query(sqlQuery, [queryVector]);
     log('Search query returned rows:', result.rows.length);
 
     // Log detailed similarity information for debugging
     result.rows.forEach(row => {
-      const preview = typeof row.preview === 'string' ? row.preview.substring(0, 100) + '...' : 'No preview available';
+      const preview = row.preview?.data 
+        ? (typeof row.preview.data === 'string' ? row.preview.data.substring(0, 100) + '...' : row.preview.data)
+        : 'No preview available';
+      
       log('Document similarity details:', {
         id: row.id,
         filename: row.filename,
@@ -349,30 +424,39 @@ export const searchDocuments = async (req: CustomRequest, res: Response) => {
     // Generate pre-signed URLs for each document
     const documents = await Promise.all(result.rows.map(async (doc: Document) => {
       try {
-        // Extract the S3 key from the file URL
-        const key = doc.file_url.split('/').slice(-2).join('/'); // Get userId/filename
-
-        log('Generating signed URL for document:', {
-          id: doc.id,
-          file_url: doc.file_url,
-          extractedKey: key
-        });
-
+        // Get signed URL
+        const key = doc.file_url.split('/').slice(-2).join('/');
         const signedUrl = await s3.getSignedUrlPromise('getObject', {
           Bucket: process.env.AWS_BUCKET_NAME,
           Key: key,
-          Expires: 3600 // URL expires in 1 hour
+          Expires: 3600
         });
+        
+        // Check if it's a PDF and needs content extraction
+        if (doc.file_type === 'application/pdf' && isClickToViewPreview(doc.preview)) {
+          const pdfContent = await fetchAndExtractPdfContent(signedUrl);
+          return {
+            ...doc,
+            file_url: signedUrl,
+            preview: {
+              type: 'pdf',
+              data: pdfContent.substring(0, 500) // First 500 chars
+            }
+          };
+        }
+        
         return {
           ...doc,
           file_url: signedUrl
         };
       } catch (error) {
-        log('Error generating signed URL for document:', doc.id, error);
-        return doc; // Return original URL if signing fails
+        // Handle errors
+        return doc;
       }
     }));
 
+    // Add this before the response is sent
+    log('Response data:', JSON.stringify(documents[0]?.preview));
     res.json(documents);
   } catch (error) {
     log('Error searching documents:', error);
@@ -430,5 +514,40 @@ export const deleteDocument = async (req: CustomRequest, res: Response) => {
   } catch (error) {
     log('Error deleting document:', error);
     res.status(500).json({ error: 'Failed to delete document' });
+  }
+};
+
+export const getDocumentPreview = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  
+  try {
+    const document = await findDocumentById(parseInt(id));
+    if (!document) {
+      return res.status(404).json({ error: 'Document not found' });
+    }
+
+    const preview = await generatePreview(document);
+    res.json({ preview });
+  } catch (error) {
+    console.error('Preview generation error:', error);
+    res.status(500).json({ 
+      preview: {
+        type: 'error',
+        data: 'Failed to generate preview'
+      }
+    });
+  }
+};
+
+// Add this function to extract PDF content on-demand
+const fetchAndExtractPdfContent = async (url: string): Promise<string> => {
+  try {
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    const buffer = Buffer.from(response.data);
+    const pdfData = await pdf(buffer);
+    return pdfData.text;
+  } catch (error) {
+    console.error('Error extracting PDF content:', error);
+    return 'Could not extract PDF content';
   }
 };

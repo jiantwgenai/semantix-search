@@ -1,5 +1,5 @@
 // backend/src/middleware/auth.middleware.ts
-import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import debug from 'debug';
 import { JwtPayload } from 'jsonwebtoken';
@@ -13,7 +13,11 @@ interface CustomRequest extends Request {
   };
 }
 
-export const authenticateToken = (req: CustomRequest, res: Response, next: NextFunction) => {
+export const authenticateToken: RequestHandler = (
+  req: CustomRequest,
+  res: Response,
+  next: NextFunction
+) => {
   try {
     const authHeader = req.headers['authorization'];
     log('Auth header:', authHeader);
@@ -21,7 +25,8 @@ export const authenticateToken = (req: CustomRequest, res: Response, next: NextF
     const token = authHeader && authHeader.split(' ')[1];
     if (!token) {
       log('No token provided');
-      return res.status(401).json({ message: 'No token provided' });
+      res.status(401).json({ message: 'No token provided' });
+      return;
     }
 
     // Verify the token
@@ -34,8 +39,10 @@ export const authenticateToken = (req: CustomRequest, res: Response, next: NextF
   } catch (error) {
     log('Auth error:', error);
     if (error instanceof jwt.JsonWebTokenError) {
-      return res.status(403).json({ message: 'Invalid token' });
+      res.status(403).json({ message: 'Invalid token' });
+      return;
     }
-    return res.status(500).json({ message: 'Authentication error' });
+    res.status(500).json({ message: 'Authentication error' });
+    return;
   }
 };

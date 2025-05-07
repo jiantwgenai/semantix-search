@@ -1,6 +1,8 @@
 import { query } from '../config/database';
 import { generateEmbedding } from './embedding.services';
 import debug from 'debug';
+import { Request, Response } from 'express';
+import { AuthenticatedRequest } from '../types/custom';
 
 const log = debug('app:search-service');
 
@@ -13,7 +15,10 @@ export interface SearchResult {
   similarity: number;
   content?: string;
   chunk_number?: number;
-  preview?: string;
+  preview?: {
+    type: string;
+    data: string;
+  };
 }
 
 // Search configuration
@@ -23,19 +28,21 @@ const SEARCH_CONFIG = {
   previewLength: 200
 };
 
-export const searchDocuments = async (queryText: string, userId: number): Promise<SearchResult[]> => {
+export const searchDocuments = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
+    const { query: searchQuery, mode = 'semantic' } = req.body;
+
     // Generate embedding for the query
-    const queryEmbedding = await generateEmbedding(queryText);
+    const queryEmbedding = await generateEmbedding(searchQuery);
     
     // Log the embedding details
     log('Generated embedding:', {
       length: queryEmbedding.length,
       preview: queryEmbedding.slice(0, 5),
-      queryText
+      queryText: searchQuery
     });
     
-    const formattedQueryEmbedding = `[${queryEmbedding.join(',')}]`;
+    const queryVector = `[${queryEmbedding.join(',')}]`;
     
     // First, verify the vector extension and table structure
     const vectorCheck = await query(`
@@ -100,8 +107,8 @@ export const searchDocuments = async (queryText: string, userId: number): Promis
     const docCheck = await query(`
       SELECT id, filename, array_length(embedding, 1) as dim
       FROM documents
-      WHERE user_id = $1 AND embedding IS NOT NULL
-    `, [userId]);
+      WHERE embedding IS NOT NULL
+    `);
 
     log('Available documents with embeddings:', {
       count: docCheck.rows.length,
@@ -109,64 +116,69 @@ export const searchDocuments = async (queryText: string, userId: number): Promis
     });
 
     // Search in both documents and document_chunks using vector similarity
-    const sql = `
-      WITH document_similarity AS (
+    const sqlQuery = `
+      WITH chunk_similarity AS (
         SELECT 
           d.id,
           d.filename,
-          d.file_url,
           d.file_type,
+          d.file_url,
           d.created_at,
-          1 - (d.embedding <=> $1::vector(${embeddingDimension})) as doc_similarity
+          dc.content as preview,
+          1 - (dc.embedding <=> $1) as similarity
         FROM documents d
-        WHERE d.user_id = $2
+        JOIN document_chunks dc ON d.id = dc.document_id
+        WHERE 1=1
       ),
-      chunk_similarity AS (
+      ranked_chunks AS (
         SELECT 
-          dc.document_id,
-          dc.chunk_number,
-          dc.content,
-          1 - (dc.embedding <=> $1::vector(${embeddingDimension})) as chunk_similarity
-        FROM document_chunks dc
-        JOIN documents d ON dc.document_id = d.id
-        WHERE d.user_id = $2
+          *,
+          ROW_NUMBER() OVER (PARTITION BY id ORDER BY similarity DESC) as chunk_rank
+        FROM chunk_similarity
       )
       SELECT 
-        ds.id,
-        ds.filename,
-        ds.file_url,
-        ds.file_type,
-        ds.created_at,
-        GREATEST(ds.doc_similarity, cs.chunk_similarity) as similarity,
-        cs.content,
-        cs.chunk_number,
+        id,
+        filename,
+        file_type,
+        file_url,
+        created_at,
         CASE 
-          WHEN cs.content IS NOT NULL THEN 
-            substring(convert_from(cs.content, 'UTF8') from 1 for ${SEARCH_CONFIG.previewLength}) || 
-            CASE WHEN length(convert_from(cs.content, 'UTF8')) > ${SEARCH_CONFIG.previewLength} THEN '...' ELSE '' END
-          ELSE NULL
-        END as preview
-      FROM document_similarity ds
-      LEFT JOIN chunk_similarity cs ON ds.id = cs.document_id
-      WHERE GREATEST(ds.doc_similarity, cs.chunk_similarity) > $3
+          WHEN file_type LIKE 'text/%' AND preview IS NOT NULL THEN 
+            json_build_object(
+              'type', 'text',
+              'data', substring(convert_from(preview, 'UTF8') from 1 for 200)
+            )
+          WHEN file_type LIKE 'application/pdf' THEN 
+            json_build_object(
+              'type', 'pdf',
+              'data', 'PDF content preview not available'
+            )
+          WHEN file_type LIKE 'application/msword' OR file_type LIKE 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' THEN
+            json_build_object(
+              'type', 'word',
+              'data', 'Binary content preview not available'
+            )
+          ELSE 
+            json_build_object(
+              'type', file_type,
+              'data', 'Preview not available'
+            )
+        END as preview,
+        similarity
+      FROM ranked_chunks
+      WHERE chunk_rank = 1
+        AND similarity > 0.25
       ORDER BY similarity DESC
-      LIMIT $4
+      LIMIT 10
     `;
 
     log('Executing search query with params:', {
-      userId,
-      embeddingDimension,
       similarityThreshold: SEARCH_CONFIG.similarityThreshold,
       maxResults: SEARCH_CONFIG.maxResults,
-      queryText
+      queryText: searchQuery
     });
 
-    const result = await query(sql, [
-      formattedQueryEmbedding, 
-      userId,
-      SEARCH_CONFIG.similarityThreshold,
-      SEARCH_CONFIG.maxResults
-    ]);
+    const result = await query(sqlQuery, [queryVector]);
     
     log('Search results:', {
       resultCount: result.rows.length,
@@ -179,7 +191,7 @@ export const searchDocuments = async (queryText: string, userId: number): Promis
       }))
     });
 
-    return result.rows;
+    res.json({ results: result.rows });
   } catch (error) {
     log('Error in searchDocuments:', error);
     if (error instanceof Error) {
@@ -188,11 +200,11 @@ export const searchDocuments = async (queryText: string, userId: number): Promis
         stack: error.stack
       });
     }
-    throw new Error(`Failed to search documents: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    res.status(500).json({ error: error instanceof Error ? error.message : 'Unknown error' });
   }
 };
 
-export const getRecentDocuments = async (userId: number, limit: number = 5): Promise<SearchResult[]> => {
+export const getRecentDocuments = async (limit: number = 5): Promise<SearchResult[]> => {
   try {
     const queryText = `
       SELECT 
@@ -200,22 +212,32 @@ export const getRecentDocuments = async (userId: number, limit: number = 5): Pro
         filename, 
         file_url, 
         file_type, 
-        created_at
+        created_at,
+        1 as similarity,
+        json_build_object(
+          'type', file_type,
+          'data',
+          CASE 
+            WHEN file_type LIKE 'application/pdf' THEN 'PDF content preview not available'
+            WHEN file_type LIKE 'application/msword' OR 
+                 file_type LIKE 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+            THEN 'Binary content preview not available'
+            ELSE 'Preview not available'
+          END
+        ) as preview
       FROM documents
-      WHERE user_id = $1
       ORDER BY created_at DESC
-      LIMIT $2
+      LIMIT $1
     `;
 
-    const result = await query(queryText, [userId, limit]);
+    const result = await query(queryText, [limit]);
     return result.rows;
   } catch (error) {
-    console.error('Error in getRecentDocuments:', error);
-    throw new Error('Failed to get recent documents');
+    throw new Error(`Failed to get recent documents: ${error}`);
   }
 };
 
-export const getDocumentById = async (documentId: number, userId: number): Promise<SearchResult | null> => {
+export const getDocumentById = async (documentId: number): Promise<SearchResult | null> => {
   try {
     const queryText = `
       SELECT 
@@ -225,10 +247,10 @@ export const getDocumentById = async (documentId: number, userId: number): Promi
         file_type, 
         created_at
       FROM documents
-      WHERE id = $1 AND user_id = $2
+      WHERE id = $1
     `;
 
-    const result = await query(queryText, [documentId, userId]);
+    const result = await query(queryText, [documentId]);
     return result.rows[0] || null;
   } catch (error) {
     console.error('Error in getDocumentById:', error);

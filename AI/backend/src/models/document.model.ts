@@ -5,93 +5,70 @@ import debug from 'debug';
 
 const log = debug('app:document-model');
 
-interface CreateDocumentParams {
+interface DocumentData {
   user_id: number;
   filename: string;
   file_url: string;
   file_type: string;
   embedding: number[];
   content: string;
+  extracted_text?: string;
 }
 
-export const createDocument = async (params: CreateDocumentParams): Promise<number> => {
-  let client;
+export const createDocument = async (data: DocumentData): Promise<number> => {
   try {
-    log('Creating document with params:', {
-      userId: params.user_id,
-      filename: params.filename,
-      fileType: params.file_type,
-      contentLength: params.content.length
-    });
-
-    // Format the embedding array as a string with square brackets
-    const formattedEmbedding = `[${params.embedding.join(',')}]`;
-    log('Formatted embedding:', {
-      length: params.embedding.length,
-      preview: formattedEmbedding.substring(0, 100) + '...'
-    });
-
-    // Get a client from the pool
-    client = await query('BEGIN');
-
-    // Insert the document
+    // Create document record
     const result = await query(
-      `INSERT INTO documents (user_id, filename, file_url, file_type, embedding, status)
-       VALUES ($1, $2, $3, $4, $5, 'PROCESSING')
+      `INSERT INTO documents (user_id, filename, file_url, file_type, embedding)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [params.user_id, params.filename, params.file_url, params.file_type, formattedEmbedding]
+      [
+        data.user_id, 
+        data.filename, 
+        data.file_url, 
+        data.file_type, 
+        Array.isArray(data.embedding) ? `[${data.embedding.join(',')}]` : data.embedding
+      ]
     );
 
     const documentId = result.rows[0].id;
-    log('Document created with ID:', documentId);
+    
+    // Use extracted text if available
+    const textContent = data.extracted_text || data.content;
 
-    // Split content into chunks and process them
-    const chunkSize = 1000; // characters per chunk
+    // Create chunks of the text content
+    const chunkSize = 1000;
     const chunks = [];
     
-    for (let i = 0; i < params.content.length; i += chunkSize) {
-      chunks.push(params.content.slice(i, i + chunkSize));
+    for (let i = 0; i < textContent.length; i += chunkSize) {
+      chunks.push(textContent.slice(i, i + chunkSize));
     }
 
-    log('Split content into chunks:', chunks.length);
+    if (chunks.length === 0) {
+      chunks.push(data.filename);
+    }
 
-    // Process chunks one at a time
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
+    // Insert chunks
+    await Promise.all(chunks.map(async (chunk, index) => {
       const chunkEmbedding = await generateEmbedding(chunk);
-      const formattedChunkEmbedding = `[${chunkEmbedding.join(',')}]`;
-
-      // Convert chunk to Buffer for BYTEA storage
       const chunkBuffer = Buffer.from(chunk, 'utf8');
 
       await query(
         `INSERT INTO document_chunks (document_id, chunk_number, content, embedding)
          VALUES ($1, $2, $3, $4)`,
-        [documentId, i + 1, chunkBuffer, formattedChunkEmbedding]
-      );
-
-      log(`Processed chunk ${i + 1}/${chunks.length}`);
-    }
-
-    // Update document status to COMPLETED
-    await query(
-      `UPDATE documents SET status = 'COMPLETED' WHERE id = $1`,
-      [documentId]
+        [
+          documentId, 
+          index + 1, 
+          chunkBuffer, 
+          Array.isArray(chunkEmbedding) ? `[${chunkEmbedding.join(',')}]` : chunkEmbedding
+        ]
     );
-
-    // Commit the transaction
-    await query('COMMIT');
-    log('Transaction committed successfully');
+    }));
 
     return documentId;
   } catch (error) {
-    // Rollback the transaction if anything fails
-    if (client) {
-      await query('ROLLBACK');
-      log('Transaction rolled back due to error');
-    }
-    log('Error in createDocument:', error);
-    throw error;
+    console.error('Error creating document:', error);
+    throw new Error(`Failed to create document: ${error}`);
   }
 };
 

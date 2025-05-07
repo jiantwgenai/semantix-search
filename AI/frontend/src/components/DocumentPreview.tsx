@@ -1,9 +1,10 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Document } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { X, Download, FileText, Calendar, FileIcon } from "lucide-react";
 import { format } from "date-fns";
+import { api } from '@/lib/api';
 
 interface DocumentPreviewProps {
   document: Document | null;
@@ -11,6 +12,31 @@ interface DocumentPreviewProps {
 }
 
 const DocumentPreview: React.FC<DocumentPreviewProps> = ({ document, onClose }) => {
+  const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const loadPreview = async () => {
+      if (!document) return;
+      
+      setLoading(true);
+      setError(null);
+      
+      try {
+        const response = await api.get(`/documents/${document.id}/preview`);
+        setPreviewContent(response.data.preview);
+      } catch (err) {
+        setError('Failed to load preview');
+        console.error('Preview loading error:', err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadPreview();
+  }, [document]);
+
   if (!document) return null;
 
   const formatDate = (dateString: string) => {
@@ -34,6 +60,52 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ document, onClose }) 
       return <FileText className="h-12 w-12 text-gray-500" />;
     }
     return <FileIcon className="h-12 w-12 text-gray-500" />;
+  };
+
+  const renderPreview = () => {
+    if (loading) {
+      return (
+        <div className="flex items-center justify-center p-8">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="bg-muted rounded-lg p-8 text-center">
+          <p className="text-muted-foreground mb-4">
+            {error}
+          </p>
+          <Button onClick={() => window.open(document.file_url, '_blank')}>
+            <Download className="mr-2 h-4 w-4" />
+            Download Document
+          </Button>
+        </div>
+      );
+    }
+
+    if (!previewContent) {
+      return (
+        <div className="bg-muted rounded-lg p-8 text-center">
+          <p className="text-muted-foreground mb-4">
+            Preview not available. Download the document to view its contents.
+          </p>
+          <Button onClick={() => window.open(document.file_url, '_blank')}>
+            <Download className="mr-2 h-4 w-4" />
+            Download Document
+          </Button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="bg-white rounded-lg p-4 shadow-inner">
+        <pre className="whitespace-pre-wrap font-sans text-sm">
+          {previewContent}
+        </pre>
+      </div>
+    );
   };
 
   return (
@@ -67,17 +139,7 @@ const DocumentPreview: React.FC<DocumentPreviewProps> = ({ document, onClose }) 
             </p>
           </div>
           
-          <div className="bg-muted rounded-lg p-8 text-center">
-            <p className="text-muted-foreground mb-4">
-              Preview not available. Download the document to view its contents.
-            </p>
-            <Button
-              onClick={() => window.open(document.file_url, '_blank')}
-            >
-              <Download className="mr-2 h-4 w-4" />
-              Download Document
-            </Button>
-          </div>
+          {renderPreview()}
         </CardContent>
       </Card>
     </div>

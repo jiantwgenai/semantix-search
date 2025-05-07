@@ -1,7 +1,7 @@
 // backend/src/routes/document.routes.ts
-import express from 'express';
+import express, { RequestHandler } from 'express';
 import multer from 'multer';
-import { uploadDocument, getDocument, searchDocuments, getDocuments, deleteDocument } from '../controllers/document.controller';
+import { uploadDocument, getDocument, searchDocuments, getDocuments, deleteDocument, getDocumentPreview } from '../controllers/document.controller';
 import { authenticateToken } from '../middleware/auth.middleware';
 
 const router = express.Router();
@@ -15,10 +15,16 @@ const upload = multer({
   }
 });
 
-router.get('/', authenticateToken, getDocuments);
-router.post('/upload', authenticateToken, upload.array('files', 10), uploadDocument);
-router.get('/:id', authenticateToken, getDocument);
-router.post('/search', authenticateToken, searchDocuments);
-router.delete('/:id', authenticateToken, deleteDocument);
+// Cast all handlers to RequestHandler type
+router.get('/', authenticateToken as RequestHandler, getDocuments as RequestHandler);
+router.post('/upload', 
+  authenticateToken as RequestHandler, 
+  upload.array('files', 10), 
+  uploadDocument as RequestHandler
+);
+router.get('/:id', authenticateToken as RequestHandler, getDocument as RequestHandler);
+router.post('/search', authenticateToken as RequestHandler, searchDocuments as RequestHandler);
+router.delete('/:id', authenticateToken as RequestHandler, deleteDocument as RequestHandler);
+router.get('/:id/preview', authenticateToken as RequestHandler, getDocumentPreview as RequestHandler);
 
 export default router;

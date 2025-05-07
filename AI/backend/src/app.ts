@@ -28,8 +28,8 @@ app.use(cors({
   origin: [
     'http://localhost:5173',
     'http://localhost:5174',
-    'http://3.128.30.11:3001',
-    'http://3.128.30.11'
+    'http://18.224.79.195/:3001',
+    'http://18.224.79.195/'
   ],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
